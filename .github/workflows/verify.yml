@@ -1,0 +1,63 @@
+name: Verify Bug Hit
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: bug_hit_ci
+          POSTGRES_USER: bug_hit
+          POSTGRES_PASSWORD: bug-hit-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bug_hit -d bug_hit_ci"
+          --health-interval 3s --health-timeout 3s --health-retries 12
+    env:
+      TEST_DATABASE_URL: jdbc:postgresql://127.0.0.1:5432/bug_hit_ci
+      DB_USER: bug_hit
+      DB_PASSWORD: bug-hit-test-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: mvn -B package
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium firefox webkit
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - name: Build the production container
+        run: docker build --tag bug-hit:ci .
+      - name: Smoke-test the container with PostgreSQL
+        shell: bash
+        run: |
+          docker run -d --name bug-hit-ci --network host \
+            -e PORT=4195 -e SPRING_PROFILES_ACTIVE=render \
+            -e JWT_SECRET=isolated-ci-signing-key-not-for-production \
+            -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_NAME=bug_hit_ci \
+            -e DB_USER=bug_hit -e DB_PASSWORD=bug-hit-test-only bug-hit:ci
+          trap 'docker logs bug-hit-ci; docker stop bug-hit-ci' EXIT
+          curl --fail-with-body --retry 25 --retry-connrefused --retry-delay 2 http://127.0.0.1:4195/actuator/health
+          curl --fail-with-body http://127.0.0.1:4195/projects/1 | grep -q '<title>Bug Hit'

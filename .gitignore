@@ -1,0 +1,13 @@
+target/
+node_modules/
+dist/
+test-results/
+playwright-report/
+.env
+.env.*
+!.env.example
+.local/
+*.log
+*.mv.db
+*.trace.db
+.DS_Store

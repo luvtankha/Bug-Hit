@@ -1,0 +1,42 @@
+services:
+  - name: bug-hit
+    type: web
+    runtime: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: render
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_HOST
+        fromDatabase:
+          name: bug-hit-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: bug-hit-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: bug-hit-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: bug-hit-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: bug-hit-db
+          property: password
+
+databases:
+  - name: bug-hit-db
+    databaseName: bug_hit
+    user: bug_hit
+    region: oregon
+    postgresMajorVersion: '17'
+    plan: free
+    ipAllowList: []
